@@ -4,10 +4,11 @@ const mysql = require('mysql2/promise');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 const dbConfig = {
     host: 'localhost',
+    port: 3307,
     user: 'root',
     password: 'Kira123@',
     database: 'Clinica'
@@ -30,10 +31,14 @@ async function getConnection() {
 }
 
 // Rota de cadastro médico
-app.post('/api/medicos/cadastro', async (req, res) => {
+app.post('/api/medico/cadastro', async (req, res) => {
     const { nome, telefone, sexo, crm, email, senha_medico } = req.body;
 
-    !senha_medico || !email || !crm || !nome || !telefone || !sexo ? res.status(400).json({ message: 'Todos os campos são obrigatórios.' }) : null;
+    if (!senha_medico || !email || !crm || !nome || !telefone || !sexo) {
+        return res.status(400).json({ message: 'Todos os campos são obrigatórios.' })
+    }
+
+    var connection;
 
     try {
         connection = await getConnection();
@@ -44,7 +49,7 @@ app.post('/api/medicos/cadastro', async (req, res) => {
 
         // Inserir o médico no banco de dados
         const [result] = await connection.execute(
-            'INSERT INTO Medicos (nome, telefone, sexo, crm, email, senha_medico) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO Medico (nome, telefone, sexo, crm, email, senha_medico) VALUES (?, ?, ?, ?, ?, ?)',
             [nome, telefone, sexo, crm, email, hashedPassword]
         );
 
@@ -67,11 +72,14 @@ app.post('/api/medicos/cadastro', async (req, res) => {
 });
 
 // Rota de cadastro paciente
-app.post('/api/pacientes/cadastro', async (req, res) => {
+app.post('/api/paciente/cadastro', async (req, res) => {
     const { nome, telefone, sexo, cpf, email, senha_paciente } = req.body;
 
-    !senha_medico || !email || !cpf || !nome || !telefone || !sexo ? res.status(400).json({ message: 'Todos os campos são obrigatórios.' }) : null;
+    if (!senha_paciente || !email || !cpf || !nome || !telefone || !sexo) {
+        return res.status(400).json({ message: 'Todos os campos são obrigatórios.' })
+    }
 
+    var connection;
     try {
         connection = await getConnection();
 
@@ -81,12 +89,12 @@ app.post('/api/pacientes/cadastro', async (req, res) => {
 
         // Inserir o médico no banco de dados
         const [result] = await connection.execute(
-            'INSERT INTO Medicos (nome, telefone, sexo, cpf, email, senha_medico) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO Paciente (nome, telefone, sexo, cpf, email, senha_paciente) VALUES (?, ?, ?, ?, ?, ?)',
             [nome, telefone, sexo, cpf, email, hashedPassword]
         );
 
         res.status(201).json({
-            message: 'Médico cadastrado com sucesso!',
+            message: 'Paciente cadastrado com sucesso!',
             id: result.insertId,
             nome,
             email
@@ -96,7 +104,7 @@ app.post('/api/pacientes/cadastro', async (req, res) => {
         if (error.code === 'ER_DUP_ENTRY') {
             res.status(409).json({ message: 'CPF ou email já cadastrado.' });
         }
-        console.error('❌ Erro ao cadastrar médico:', error);
+        console.error('❌ Erro ao cadastrar paciente:', error);
         res.status(500).json({ message: 'Erro interno do servidor.' });
     } finally {
         if (connection) connection.end();
@@ -105,9 +113,11 @@ app.post('/api/pacientes/cadastro', async (req, res) => {
 
 // Rota de login médico
 app.post('/api/login/medico', async (req, res) => {
-    const { email, senha_medico } = req.body;
+    const { email, password } = req.body;
 
-    !email || !senha_medico ? res.status(400).json({ message: 'Email e senha são obrigatórios.' }) : null;
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email e senha são obrigatórios.' })
+    };
 
     var connection;
     try {
@@ -115,7 +125,8 @@ app.post('/api/login/medico', async (req, res) => {
 
         // Buscar o médico pelo email
         const [rows] = await connection.execute(
-            'SELECT id_medico, nome, email, senha_medico, FROM Medico WHERE email = ?',
+            'SELECT id_medico, nome, email, senha_medico FROM Medico WHERE email = ?',
+            [email]
         );
 
         if (rows.length === 0) {
@@ -125,7 +136,7 @@ app.post('/api/login/medico', async (req, res) => {
         const medico = rows[0];
 
         // Comparar a senha fornecida com a senha armazenada
-        const match = await bcrypt.compare(senha_medico, medico.senha_medico);
+        const match = await bcrypt.compare(password, medico.senha_medico);
 
         if (match) {
             res.json({
