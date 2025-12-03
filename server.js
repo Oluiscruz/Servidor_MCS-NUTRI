@@ -33,6 +33,7 @@ async function getConnection() {
 // Rota de cadastro médico
 app.post('/api/medico/cadastro', async (req, res) => {
     const { nome, telefone, sexo, crm, email, senha_medico } = req.body;
+    
 
     if (!senha_medico || !email || !crm || !nome || !telefone || !sexo) {
         return res.status(400).json({ message: 'Todos os campos são obrigatórios.' })
