@@ -151,7 +151,7 @@ app.post('/api/login/medico', async (req, res) => {
 
         if (match) {
             res.json({
-                message: 'Login bem-sucedido!',
+                message: '✅ Login bem-sucedido!',
                 user: { id: medico.id_medico, nome: medico.nome, email: medico.email, tipo: 'medico' }
             })
         } else {
@@ -205,7 +205,7 @@ app.post('/api/login/paciente', async (req, res) => {
         if (match) {
             // Em um ambiente real, aqui você geraria um JWT (JSON Web Token)
             res.json({
-                message: 'Login de paciente realizado com sucesso!',
+                message: '✅ Login de paciente realizado com sucesso!',
                 user: { id: paciente.id_paciente, nome: paciente.nome, email: paciente.email, tipo: 'paciente' }
                 // token: 'SEU_TOKEN_JWT_AQUI' 
             });
