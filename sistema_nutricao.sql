@@ -103,3 +103,13 @@ CREATE TABLE
         data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (paciente_id) REFERENCES pacientes (id) ON DELETE CASCADE
     );
+
+    -- commit 'cadastro de crn'
+    -- Aplicando alterações na tabela nutricionistas para que apenas pessoas com CRN possam se cadastrar no app
+
+    ALTER TABLE nutricionistas
+    drop COLUMN crn,
+    add COLUMN crn_numero VARCHAR(20) UNIQUE,
+    add COLUMN crn_regiao int,
+    add COLUMN crn_validacao BOOLEAN DEFAULT FALSE,
+    add COLUMN crn_documento VARCHAR(255) NOT NULL;
