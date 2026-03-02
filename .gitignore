@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+crn_documento
+sistema_nutricional.sql
 dist
 dist-ssr
 *.local
@@ -16,7 +18,6 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .env
-sistema_nutricional.sql
 .idea
 .DS_Store
 *.suo
