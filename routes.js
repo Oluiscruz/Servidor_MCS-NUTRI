@@ -1,12 +1,22 @@
 // Arquivo com todas as rotas da API
-
+require('dotenv').config();
 const express = require('express');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 const routes = express.Router();
+
+// Configurar transporter de email
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+    }
+});
 
 const uploadsDir = path.resolve(__dirname, 'crn_documento');
 if (!fs.existsSync(uploadsDir)) {
@@ -137,7 +147,7 @@ module.exports = function (getConnection) {
 
             // Buscar o nutri pelo email
             const [rows] = await connection.execute(
-                'SELECT id, nome, email, senha, crn_numero, crn_regiao, crn_documento, telefone FROM nutricionistas WHERE email = ?',
+                'SELECT id, nome, email, senha, crn_numero, crn_regiao, crn_documento, crn_validacao, telefone FROM nutricionistas WHERE email = ?',
                 [email]
             );
 
@@ -146,22 +156,27 @@ module.exports = function (getConnection) {
             const nutri = rows[0];
             const match = await bcrypt.compare(senha, nutri.senha);
 
-            if (match) {
-                res.json({
-                    message: '✅ Login bem-sucedido!',
-                    usuario: {
-                        id: nutri.id,
-                        nome: nutri.nome,
-                        email: nutri.email,
-                        crn_regiao: nutri.crn_regiao,
-                        crn_numero: nutri.crn_numero,
-                        telefone: nutri.telefone,
-                        tipo: 'nutricionista'
-                    }
-                });
-            } else {
-                res.status(401).json({ message: '❌ Email ou senha inválidos.' });
+            if (!match) {
+                return res.status(401).json({ message: '❌ Email ou senha inválidos.' });
             }
+
+            // Verificar se o CRN foi validado
+            if (!nutri.crn_validacao) {
+                return res.status(403).json({ message: '⏳ Seu cadastro está pendente de validação do CRN.' });
+            }
+
+            res.json({
+                message: '✅ Login bem-sucedido!',
+                usuario: {
+                    id: nutri.id,
+                    nome: nutri.nome,
+                    email: nutri.email,
+                    crn_regiao: nutri.crn_regiao,
+                    crn_numero: nutri.crn_numero,
+                    telefone: nutri.telefone,
+                    tipo: 'nutricionista'
+                }
+            });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: 'Erro interno do servidor.' });
@@ -170,7 +185,7 @@ module.exports = function (getConnection) {
         finally { if (connection) connection.release(); }
     });
 
-    // Rota de login/cadastro via Google Auth
+    // Rota de login/cadastro de paciente via Google Auth
     routes.post('/api/paciente/google-auth', async (req, res) => {
         const { email, nome, telefone } = req.body;
 
@@ -298,7 +313,7 @@ module.exports = function (getConnection) {
         }
     });
 
-    // ====== ROTA DE DIAS DISPONÍVEIS ======= //
+    // Rota de salvar datas disponíveis do nutricionista
 
     routes.post('/api/nutricionista/agenda/salvar-data', async (req, res) => {
         const { nutricionista_id, mes, dia, ano, hora_inicio, hora_fim } = req.body;
@@ -399,16 +414,16 @@ module.exports = function (getConnection) {
     // ROTA DE SALVAR AGENDAMENTO feito pelo cliente:
     routes.post('/api/paciente/agendamento/novo', async (req, res) => {
         const { paciente_id, nutricionista_id, data_selecionada, horario, status } = req.body;
-        
+
         console.log('📋 Dados recebidos:', { paciente_id, nutricionista_id, data_selecionada, horario, status });
-        
+
         // Validação mínima dos campos obrigatórios
         if (!paciente_id || !nutricionista_id || !data_selecionada || !horario) {
-            console.log('❌ Campos faltando:', { 
-                paciente_id: !!paciente_id, 
-                nutricionista_id: !!nutricionista_id, 
-                data_selecionada: !!data_selecionada, 
-                horario: !!horario 
+            console.log('❌ Campos faltando:', {
+                paciente_id: !!paciente_id,
+                nutricionista_id: !!nutricionista_id,
+                data_selecionada: !!data_selecionada,
+                horario: !!horario
             });
             return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
         }
@@ -486,6 +501,562 @@ module.exports = function (getConnection) {
         }
     });
 
+    // Login Admin
+    routes.post('/api/admin/login', async (req, res) => {
+        const { email, senha } = req.body;
+
+        if (!email || !senha) {
+            return res.status(400).json({ message: 'Email e senha são obrigatórios' });
+        }
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                'SELECT id, email, senha FROM admins WHERE email = ?',
+                [email]
+            );
+
+            if (rows.length === 0) {
+                return res.status(401).json({ message: '❌ Credenciais inválidas.' });
+            }
+
+            const admin = rows[0];
+            const match = await bcrypt.compare(senha, admin.senha);
+
+            if (match) {
+                res.json({
+                    message: '✅ Login admin realizado!',
+                    admin: { id: admin.id, email: admin.email, tipo: 'admin' }
+                });
+            } else {
+                res.status(401).json({ message: '❌ Credenciais inválidas.' });
+            }
+        } catch (error) {
+            console.error('Erro no login admin:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Aprovar/Rejeitar validação de CRN (admin)
+    routes.post('/api/nutricionista/validar-crn', async (req, res) => {
+        const { nutricionista_id, aprovado } = req.body;
+
+        if (!nutricionista_id || aprovado === undefined) {
+            return res.status(400).json({ message: 'nutricionista_id e aprovado são obrigatórios' });
+        }
+
+        let connection;
+        try {
+            connection = await getConnection();
+            await connection.execute(
+                'UPDATE nutricionistas SET crn_validacao = ? WHERE id = ?',
+                [aprovado, nutricionista_id]
+            );
+            res.json({ message: aprovado ? 'CRN aprovado com sucesso!' : 'CRN rejeitado.' });
+        } catch (error) {
+            console.error('Erro ao validar CRN:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Verificar status de validação do CRN
+    routes.get('/api/nutricionista/status-validacao/:id', async (req, res) => {
+        const { id } = req.params;
+
+        let connection;
+        try {
+            connection = await getConnection();
+            // Incluir o email na resposta para que o frontend possa enviar notificações
+            const [rows] = await connection.execute(
+                'SELECT crn_validacao, nome, crn_numero, crn_regiao, email FROM nutricionistas WHERE id = ?',
+                [id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(404).json({ message: 'Nutricionista não encontrado' });
+            }
+
+            res.json({ validado: rows[0].crn_validacao, nutricionista: rows[0] });
+        } catch (error) {
+            console.error('Erro ao verificar status:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Listar nutricionistas pendentes de validação
+    routes.get('/api/nutricionista/pendentes-validacao', async (req, res) => {
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                'SELECT id, nome, crn_numero, crn_regiao, crn_documento, email, telefone, data_criacao FROM nutricionistas WHERE crn_validacao = FALSE ORDER BY data_criacao DESC'
+            );
+            res.json({ nutricionistas: rows });
+        } catch (error) {
+            console.error('Erro ao listar pendentes:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Enviar email de validação do crn
+    routes.post('/api/nutricionista/enviar-email-validacao', async (req, res) => {
+        console.log('📧 Iniciando envio de email...');
+        console.log('Body recebido:', JSON.stringify(req.body, null, 2));
+
+        const { sucesso, nutricionista, nutricionista_id } = req.body;
+
+        let dadosNutricionista = nutricionista;
+
+        // Se não veio o objeto nutricionista, buscar no banco pelo ID
+        if (!dadosNutricionista && nutricionista_id) {
+            console.log('🔍 Buscando dados do nutricionista no banco...');
+            let connection;
+            try {
+                connection = await getConnection();
+                const [rows] = await connection.execute(
+                    'SELECT nome, email, crn_numero, crn_regiao FROM nutricionistas WHERE id = ?',
+                    [nutricionista_id]
+                );
+                if (rows.length > 0) {
+                    dadosNutricionista = rows[0];
+                    console.log('✅ Dados encontrados:', dadosNutricionista);
+                }
+            } catch (error) {
+                console.error('❌ Erro ao buscar nutricionista:', error);
+            } finally {
+                if (connection) connection.release();
+            }
+        }
+
+        console.log('Sucesso:', sucesso);
+        console.log('Nutricionista:', dadosNutricionista);
+        console.log('Email do nutricionista:', dadosNutricionista?.email);
+
+        if (!dadosNutricionista || !dadosNutricionista.email) {
+            console.log('❌ Validação falhou: dados incompletos');
+            return res.status(400).json({ message: 'Dados do nutricionista incompletos' });
+        }
+
+        try {
+            let mailOptions;
+
+            if (sucesso) {
+                console.log('✅ Preparando email de aprovação...');
+                mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: dadosNutricionista.email,
+                    subject: 'Cadastro Realizado com Sucesso - NutriMS',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                            <h2 style="color: #4caf50;">✓ Cadastro Aprovado!</h2>
+                            <p>Olá, <strong>${dadosNutricionista.nome}</strong>!</p>
+                            <p>Seu cadastro foi realizado com sucesso na plataforma NutriMS.</p>
+                            <p><strong>Dados do cadastro:</strong></p>
+                            <ul>
+                                <li>Nome: ${dadosNutricionista.nome}</li>
+                                <li>CRN: ${dadosNutricionista.crn_regiao}-${dadosNutricionista.crn_numero}</li>
+                                <li>Email: ${dadosNutricionista.email}</li>
+                            </ul>
+                            <p>Você já pode acessar a plataforma e começar a utilizar nossos serviços.</p>
+                            <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                                Atenciosamente,<br>
+                                Equipe NutriMS
+                            </p>
+                        </div>
+                    `
+                };
+            } else {
+                console.log('❌ Preparando email de rejeição...');
+                mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: dadosNutricionista.email,
+                    subject: 'Problema na Validação do CRN - NutriMS',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                            <h2 style="color: #f44336;">✗ CRN Inválido</h2>
+                            <p>Olá,</p>
+                            <p>Infelizmente não foi possível validar seu número de CRN.</p>
+                            <p><strong>Possíveis motivos:</strong></p>
+                            <ul>
+                                <li>CRN não encontrado no sistema do CFN</li>
+                                <li>CRN inativo ou suspenso</li>
+                                <li>Número digitado incorretamente</li>
+                            </ul>
+                            <p>Por favor, verifique seus dados e tente novamente.</p>
+                            <p>Se o problema persistir, entre em contato com nosso suporte.</p>
+                            <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                                Atenciosamente,<br>
+                                Equipe NutriMS
+                            </p>
+                        </div>
+                    `
+                };
+            }
+
+            console.log('📨 Configurações do email:');
+            console.log('From:', mailOptions.from);
+            console.log('To:', mailOptions.to);
+            console.log('Subject:', mailOptions.subject);
+
+            console.log('🚀 Enviando email...');
+            await transporter.sendMail(mailOptions);
+            console.log('✅ Email enviado com sucesso!');
+            res.json({ message: 'Email enviado com sucesso' });
+        } catch (error) {
+            console.error('❌ Erro ao enviar email:', error);
+            console.error('Detalhes do erro:', error.message);
+            console.error('Stack:', error.stack);
+            res.status(500).json({ message: 'Erro ao enviar email' });
+        }
+    });
+
+    // Rota para o nutricionista visualizar seus pacientes/agendamentos
+    routes.get('/api/nutricionista/pacientes-agendados', async (req, res) => {
+        const { nutricionista_id } = req.query;
+
+        if (!nutricionista_id) {
+            return res.status(400).json({ message: 'nutricionista_id é obrigatório' });
+        }
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                `SELECT 
+                    a.id AS agendamento_id,
+                    a.mes_ano,
+                    a.dia,
+                    a.ano,
+                    a.hora_agendamento,
+                    a.status,
+                    p.id AS paciente_id,
+                    p.nome AS paciente_nome,
+                    p.email AS paciente_email,
+                    p.telefone AS paciente_telefone
+                FROM agendamentos a
+                INNER JOIN pacientes p ON a.paciente_id = p.id
+                WHERE a.nutricionista_id = ?
+                ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
+                [nutricionista_id]
+            );
+            res.json({ agendamentos: rows });
+        } catch (error) {
+            console.error('Erro ao buscar pacientes agendados:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para o nutri alterar status do agendamento (ex: cancelar)
+    routes.patch('/api/nutricionista/agendamento/alterar-status', async (req, res) => {
+        console.log('🔄 Requisição recebida para alterar status');
+        console.log('Body:', req.body);
+
+        const { agendamento_id, status } = req.body;
+
+        if (!agendamento_id || !status) {
+            console.log('❌ Campos faltando:', { agendamento_id, status });
+            return res.status(400).json({ message: 'agendamento_id e status são obrigatórios' });
+        }
+
+        let connection;
+        try {
+            connection = await getConnection();
+            console.log('💾 Executando UPDATE:', { status, agendamento_id });
+
+            const [result] = await connection.execute(
+                `UPDATE agendamentos SET status = ? WHERE id = ?`,
+                [status, agendamento_id]
+            );
+
+            console.log('✅ UPDATE executado. Linhas afetadas:', result.affectedRows);
+            res.json({ message: 'Status do agendamento atualizado com sucesso!', affectedRows: result.affectedRows });
+        } catch (error) {
+            console.error('❌ Erro ao alterar status do agendamento:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para apagar um agendamento (para casos onde o nutri queira remover completamente, não apenas cancelar)
+    routes.delete('/api/nutricionista/agendamento/:agendamento_id', async (req, res) => {
+        const { agendamento_id } = req.params;
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [result] = await connection.execute(
+                `DELETE FROM agendamentos WHERE id = ?`,
+                [agendamento_id]
+            );
+
+            console.log('✅ Agendamento apagado com sucesso. Linhas afetadas:', result.affectedRows);
+            res.json({ message: 'Agendamento apagado com sucesso!', affectedRows: result.affectedRows });
+
+        } catch (error) {
+            console.error('❌ Erro ao apagar agendamento:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+
+    // Rota para criar a ficha do paciente
+    routes.post('/api/paciente/criar/ficha-paciente', async (req, res) => {
+        console.log('📋 Dados recebidos:', req.body);
+        const { paciente_id, altura, peso, alergias, restricoes_alimentares, objetivos } = req.body;
+
+        if (!paciente_id || !altura || !peso || !objetivos) {
+            return res.status(400).json({ message: 'paciente_id, altura, peso e objetivos são obrigatórios' });
+        }
+
+        const alturaNumerico = parseFloat(altura);
+        const pesoNumerico = parseFloat(peso);
+        const imc = parseFloat((pesoNumerico / (alturaNumerico * alturaNumerico)).toFixed(2));
+        console.log(`📊 Altura: ${alturaNumerico}m, Peso: ${pesoNumerico}kg, IMC: ${imc}`);
+
+        let connection;
+        try {
+            connection = await getConnection();
+
+            const [result] = await connection.execute(
+                `INSERT INTO fichas_pacientes (paciente_id, altura, peso, imc, alergias, restricoes_alimentares, objetivo) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [paciente_id, alturaNumerico, pesoNumerico, imc, alergias || null, restricoes_alimentares || null, objetivos]
+            );
+            res.json({ message: 'Ficha do paciente criada com sucesso!', ficha_id: result.insertId });
+        } catch (error) {
+            console.error('❌ Erro ao criar ficha do paciente:', error);
+            console.error('Detalhes:', error.message);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para buscar a ficha do paciente
+    routes.get('/api/paciente/ficha-paciente/:paciente_id', async (req, res) => {
+        const { paciente_id } = req.params;
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                `SELECT * FROM fichas_pacientes WHERE paciente_id = ?`,
+                [paciente_id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(404).json({ message: 'Ficha não encontrada' });
+            }
+
+            res.json(rows[0]);
+        } catch (error) {
+            console.error('❌ Erro ao buscar ficha do paciente:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para atualizar a ficha do paciente
+    routes.put('/api/paciente/atualizar/ficha-paciente', async (req, res) => {
+        console.log('📋 Dados recebidos para atualizar ficha:', req.body);
+        const { paciente_id, altura, peso, alergias, restricoes_alimentares, objetivos } = req.body;
+
+        if (!paciente_id || !altura || !peso || !objetivos) {
+            return res.status(400).json({ message: 'paciente_id, altura, peso e objetivos são obrigatórios' });
+        }
+
+        const alturaNumerico = parseFloat(altura);
+        const pesoNumerico = parseFloat(peso);
+        const imc = parseFloat((pesoNumerico / (alturaNumerico * alturaNumerico)).toFixed(2));
+        console.log(`📊 Altura: ${alturaNumerico}m, Peso: ${pesoNumerico}kg, IMC: ${imc}`);
+
+        let connection;
+        try {
+            connection = await getConnection();
+
+            const [result] = await connection.execute(
+                `UPDATE fichas_pacientes SET altura = ?, peso = ?, imc = ?, alergias = ?, restricoes_alimentares = ?, objetivo = ? WHERE paciente_id = ?`,
+                [alturaNumerico, pesoNumerico, imc, alergias || null, restricoes_alimentares || null, objetivos, paciente_id]
+            );
+            res.json({ message: 'Ficha do paciente atualizada com sucesso!', affectedRows: result.affectedRows });
+
+        } catch (error) {
+            console.error('❌ Erro ao atualizar ficha do paciente:', error);
+            console.error('Detalhes:', error.message);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para o nutricionista buscar a ficha do paciente
+    routes.get('/api/nutricionista/ficha/:paciente_id', async (req, res) => {
+        const { paciente_id } = req.params;
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                `SELECT 
+                    f.*,
+                    p.nome AS paciente_nome,
+                    p.email AS paciente_email,
+                    p.telefone AS paciente_telefone,
+                    p.data_nascimento AS paciente_data_nascimento
+                FROM fichas_pacientes f
+                INNER JOIN pacientes p ON f.paciente_id = p.id
+                WHERE f.paciente_id = ?`,
+                [paciente_id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(404).json({ message: 'Ficha não encontrada' });
+            }
+
+            res.json(rows[0]);
+        } catch (error) {
+            console.error('❌ Erro ao buscar ficha do paciente:', error);
+            res.status(500).json({ message: 'Erro interno do servidor.' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // Rota para notificar o paciente (agendamento confirmado ou cancelado)
+    routes.post('/api/nutricionista/notificar-paciente', async (req, res) => {
+        const { agendamento_id, status } = req.body;
+
+        if (!agendamento_id || !status) {
+            return res.status(400).json({ message: 'agendamento_id e status são obrigatórios' });
+        }
+
+        let connection;
+        try {
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                `SELECT 
+                    a.dia, a.mes_ano, a.ano, a.hora_agendamento,
+                    p.nome AS paciente_nome, p.email AS paciente_email,
+                    n.nome AS nutricionista_nome
+                FROM agendamentos a
+                INNER JOIN pacientes p ON a.paciente_id = p.id
+                INNER JOIN nutricionistas n ON a.nutricionista_id = n.id
+                WHERE a.id = ?`,
+                [agendamento_id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(404).json({ message: 'Agendamento não encontrado' });
+            }
+
+            const { paciente_nome, paciente_email, nutricionista_nome, dia, mes_ano, ano, hora_agendamento } = rows[0];
+            const dataConsulta = `${dia} de ${mes_ano} de ${ano} às ${hora_agendamento}`;
+
+            let mailOptions;
+            if (status === 'Confirmado') {
+                mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: paciente_email,
+                    subject: 'Consulta Confirmada - NutriMS',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                            <h2 style="color: #4caf50;">✓ Consulta Confirmada!</h2>
+                            <p>Olá, <strong>${paciente_nome}</strong>!</p>
+                            <p>Sua consulta com <strong>${nutricionista_nome}</strong> foi confirmada.</p>
+                            <p><strong>Data e horário:</strong> ${dataConsulta}</p>
+                            <p>Nos vemos em breve!</p>
+                            <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                                Atenciosamente,<br>
+                                Equipe NutriMS
+                            </p>
+                        </div>
+                    `
+                };
+            } else if (status === 'Cancelado') {
+                mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: paciente_email,
+                    subject: 'Consulta Cancelada - NutriMS',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                            <h2 style="color: #f44336;">✗ Consulta Cancelada</h2>
+                            <p>Olá, <strong>${paciente_nome}</strong>!</p>
+                            <p>Por motivos de agenda, sua consulta com <strong>${nutricionista_nome}</strong> foi cancelada.</p>
+                            <p><strong>Data e horário:</strong> ${dataConsulta}</p>
+                            <p>Por favor, agende um novo horário quando possível.</p>
+                            <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                                Atenciosamente,<br>
+                                Equipe NutriMS
+                            </p>
+                        </div>
+                    `
+                };
+            } else {
+                return res.status(400).json({ message: 'Status inválido' });
+            }
+
+            await transporter.sendMail(mailOptions);
+            res.json({ message: 'Email enviado com sucesso' });
+        } catch (error) {
+            console.error('❌ Erro ao enviar email:', error);
+            res.status(500).json({ message: 'Erro ao enviar email' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
+    // rota para visualizar historico de consultas do nutri 
+    routes.get('/api/nutricionista/historico-consultas', async (req, res) => {
+        const { nutricionista_id } = req.query;
+        if (!nutricionista_id) {
+            return res.status(400).json({ message: 'nutricionista_id é obrigatório' });
+        }
+
+        let connection;
+        try{
+            connection = await getConnection();
+            const [rows] = await connection.execute(
+                `SELECT 
+                    a.id AS agendamento_id,
+                    a.paciente_id,
+                    a.status,
+                    a.dia,
+                    a.mes_ano,
+                    a.ano,
+                    a.hora_agendamento,
+                    p.nome AS paciente_nome,
+                    p.email AS paciente_email,
+                    p.telefone AS paciente_telefone
+                FROM agendamentos a
+                JOIN pacientes p ON a.paciente_id = p.id
+                WHERE a.nutricionista_id = ?
+                ORDER BY a.ano DESC, a.mes_ano DESC, a.dia DESC, a.hora_agendamento ASC`,
+                [nutricionista_id]
+            );
+            res.json(rows);
+
+        } catch (error) {
+            console.error('Erro ao buscar histórico de consultas:', error);
+            res.status(500).json({ message: 'Erro ao buscar histórico de consultas' });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
 
     return routes;
 }

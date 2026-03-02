@@ -113,3 +113,16 @@ CREATE TABLE
     add COLUMN crn_regiao int,
     add COLUMN crn_validacao BOOLEAN DEFAULT FALSE,
     add COLUMN crn_documento VARCHAR(255) NOT NULL;
+
+
+-- 7. TABELA DE ADMINISTRADORES
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(200) NOT NULL UNIQUE,
+    senha VARCHAR(255) NOT NULL,
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Inserir admin padrão (senha: admin123)
+INSERT INTO admins (email, senha) VALUES 
+('admin@nutrims.com', '$2b$10$rZ5qH8qH8qH8qH8qH8qH8uYvXxXxXxXxXxXxXxXxXxXxXxXxXxXxX');

@@ -24,6 +24,7 @@
     "googleapis": "^170.1.0",
     "multer": "^2.0.2",
     "mysql2": "^3.9.7",
+    "nodemailer": "^6.9.7",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0"
   }
