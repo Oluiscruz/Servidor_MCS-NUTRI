@@ -719,7 +719,7 @@ module.exports = function (getConnection) {
         }
     });
 
-    // Rota para o nutricionista visualizar seus pacientes/agendamentos
+    // Rota para o nutricionista visualizar seus pacientes/agendamentos (excluindo concluídos)
     routes.get('/api/nutricionista/pacientes-agendados', async (req, res) => {
         const { nutricionista_id } = req.query;
 
@@ -744,7 +744,7 @@ module.exports = function (getConnection) {
                     p.telefone AS paciente_telefone
                 FROM agendamentos a
                 INNER JOIN pacientes p ON a.paciente_id = p.id
-                WHERE a.nutricionista_id = ?
+                WHERE a.nutricionista_id = ? AND LOWER(a.status) != 'concluido'
                 ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
                 [nutricionista_id]
             );
@@ -780,13 +780,60 @@ module.exports = function (getConnection) {
             );
 
             console.log('✅ UPDATE executado. Linhas afetadas:', result.affectedRows);
+            console.log('📊 Status recebido:', status);
+
+            // Se o status foi alterado para 'Concluído', salvar no histórico de agendamentos
+            if (result.affectedRows > 0 && status.toLowerCase() === 'concluido') {
+                console.log('✅ ENTRANDO no bloco de histórico');
+                try {
+                    // Buscar dados do agendamento atualizado
+                    const [agRows] = await connection.execute(
+                        'SELECT paciente_id, nutricionista_id FROM agendamentos WHERE id = ?',
+                        [agendamento_id]
+                    );
+
+                    if (agRows.length > 0) {
+                        const pacienteId = agRows[0].paciente_id;
+                        const nutricionistaId = agRows[0].nutricionista_id;
+
+                        // Buscar a ficha mais recente do paciente (se houver)
+                        const [fichaRows] = await connection.execute(
+                            'SELECT id FROM fichas_pacientes WHERE paciente_id = ? ORDER BY data_atualizacao DESC LIMIT 1',
+                            [pacienteId]
+                        );
+                        const fichaId = fichaRows.length > 0 ? fichaRows[0].id : null;
+
+                        // Evitar inserção duplicada de histórico para o mesmo agendamento
+                        const [existing] = await connection.execute(
+                            'SELECT agendamento_id FROM historico_consultas WHERE agendamento_id = ?',
+                            [agendamento_id]
+                        );
+
+                        console.log('🔍 Verificando duplicata. Existing length:', existing.length);
+                        if (existing.length === 0) {
+                            console.log('💾 Inserindo histórico com dados:', { nutricionistaId, pacienteId, agendamento_id, fichaId });
+                            await connection.execute(
+                                `INSERT INTO historico_consultas (
+                                nutricionista_id, paciente_id, agendamento_id, ficha_id
+                                ) 
+                                VALUES (?, ?, ?, ?)`,
+                                [nutricionistaId, pacienteId, agendamento_id, fichaId]  
+                            );
+                            console.log('✅ Histórico de agendamento inserido:', { agendamento_id, pacienteId, nutricionistaId, fichaId });
+                        } else {
+                            console.log('ℹ  Histórico já existente para agendamento:', agendamento_id);
+                        }
+                    } 
+                } catch (histError) {
+                    console.error('❌ Erro ao inserir histórico de agendamento automaticamente:', histError);
+                }
+            }
+
             res.json({ message: 'Status do agendamento atualizado com sucesso!', affectedRows: result.affectedRows });
         } catch (error) {
             console.error('❌ Erro ao alterar status do agendamento:', error);
             res.status(500).json({ message: 'Erro interno do servidor.' });
-        } finally {
-            if (connection) connection.release();
-        }
+        } finally { if (connection) connection.release(); }
     });
 
     // Rota para apagar um agendamento (para casos onde o nutri queira remover completamente, não apenas cancelar)
@@ -1020,35 +1067,39 @@ module.exports = function (getConnection) {
         }
     });
 
-    // rota para visualizar historico de consultas do nutri 
+    // rota para visualizar historico de consultas do nutri (apenas concluídos)
     routes.get('/api/nutricionista/historico-consultas', async (req, res) => {
         const { nutricionista_id } = req.query;
+
         if (!nutricionista_id) {
-            return res.status(400).json({ message: 'nutricionista_id é obrigatório' });
+            return res.status(400).json(
+                { message: 'nutricionista_id é obrigatório', agendamentos: [] }
+            );
         }
 
         let connection;
-        try{
+        try {
             connection = await getConnection();
             const [rows] = await connection.execute(
                 `SELECT 
                     a.id AS agendamento_id,
-                    a.paciente_id,
-                    a.status,
-                    a.dia,
                     a.mes_ano,
+                    a.dia,
                     a.ano,
                     a.hora_agendamento,
+                    a.status,
+                    p.id AS paciente_id,
                     p.nome AS paciente_nome,
                     p.email AS paciente_email,
                     p.telefone AS paciente_telefone
                 FROM agendamentos a
-                JOIN pacientes p ON a.paciente_id = p.id
-                WHERE a.nutricionista_id = ?
-                ORDER BY a.ano DESC, a.mes_ano DESC, a.dia DESC, a.hora_agendamento ASC`,
+                LEFT JOIN pacientes p ON a.paciente_id = p.id
+                WHERE a.nutricionista_id = ? AND LOWER(a.status) = 'concluido'
+                ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
                 [nutricionista_id]
             );
-            res.json(rows);
+            console.log('Historico de consultas (concluídos):', rows);
+            res.json({ agendamentos: rows });
 
         } catch (error) {
             console.error('Erro ao buscar histórico de consultas:', error);
@@ -1057,6 +1108,7 @@ module.exports = function (getConnection) {
             if (connection) connection.release();
         }
     });
+
 
     return routes;
 }

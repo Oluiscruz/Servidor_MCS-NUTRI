@@ -9,7 +9,7 @@ lerna-debug.log*
 
 node_modules
 crn_documento
-sistema_nutricional.sql
+sistema_nutricao.sql
 dist
 dist-ssr
 *.local
