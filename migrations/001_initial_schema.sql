@@ -3,19 +3,31 @@
 -- Date: 2026-03-05
 
 -- Criação de Tipos ENUM
-CREATE TYPE genero_paciente AS ENUM ('M', 'F', 'Outro');
+DO $$ BEGIN
+    CREATE TYPE genero_paciente AS ENUM ('M', 'F', 'Outro');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
-CREATE TYPE meses_ano AS ENUM (
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-);
+DO $$ BEGIN
+    CREATE TYPE meses_ano AS ENUM (
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
-CREATE TYPE status_agendamento AS ENUM (
-    'Pendente', 'Confirmado', 'Cancelado', 'Concluído'
-);
+DO $$ BEGIN
+    CREATE TYPE status_agendamento AS ENUM (
+        'Pendente', 'Confirmado', 'Cancelado', 'Concluído'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- Tabela de Nutricionistas
-CREATE TABLE nutricionistas (
+CREATE TABLE IF NOT EXISTS nutricionistas (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     email VARCHAR(200) NOT NULL UNIQUE,
@@ -30,7 +42,7 @@ CREATE TABLE nutricionistas (
 );
 
 -- Tabela de Pacientes
-CREATE TABLE pacientes (
+CREATE TABLE IF NOT EXISTS pacientes (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     data_nascimento DATE,
@@ -43,7 +55,7 @@ CREATE TABLE pacientes (
 );
 
 -- Tabela de Dias Disponíveis
-CREATE TABLE dias_disponiveis (
+CREATE TABLE IF NOT EXISTS dias_disponiveis (
     id SERIAL PRIMARY KEY,
     nutricionista_id INT NOT NULL,
     mes meses_ano NOT NULL,
@@ -57,7 +69,7 @@ CREATE TABLE dias_disponiveis (
 );
 
 -- Tabela de Agendamentos
-CREATE TABLE agendamentos (
+CREATE TABLE IF NOT EXISTS agendamentos (
     id SERIAL PRIMARY KEY,
     paciente_id INT,
     nutricionista_id INT,
@@ -71,7 +83,7 @@ CREATE TABLE agendamentos (
 );
 
 -- Tabela de Fichas de Pacientes
-CREATE TABLE fichas_pacientes (
+CREATE TABLE IF NOT EXISTS fichas_pacientes (
     id SERIAL PRIMARY KEY,
     paciente_id INT NOT NULL,
     altura DECIMAL(3, 2) NOT NULL,
@@ -85,7 +97,7 @@ CREATE TABLE fichas_pacientes (
 );
 
 -- Tabela de Administradores
-CREATE TABLE admins (
+CREATE TABLE IF NOT EXISTS admins (
     id SERIAL PRIMARY KEY,
     email VARCHAR(200) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
@@ -93,7 +105,7 @@ CREATE TABLE admins (
 );
 
 -- Tabela de Histórico de Consultas
-CREATE TABLE historico_consultas (
+CREATE TABLE IF NOT EXISTS historico_consultas (
     nutricionista_id INT NOT NULL,
     paciente_id INT NOT NULL,
     data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -106,8 +118,8 @@ CREATE TABLE historico_consultas (
 );
 
 -- Índices para melhor performance
-CREATE INDEX idx_nutricionistas_email ON nutricionistas(email);
-CREATE INDEX idx_pacientes_email ON pacientes(email);
-CREATE INDEX idx_agendamentos_nutricionista ON agendamentos(nutricionista_id);
-CREATE INDEX idx_agendamentos_paciente ON agendamentos(paciente_id);
-CREATE INDEX idx_dias_disponiveis_nutricionista ON dias_disponiveis(nutricionista_id);
+CREATE INDEX IF NOT EXISTS idx_nutricionistas_email ON nutricionistas(email);
+CREATE INDEX IF NOT EXISTS idx_pacientes_email ON pacientes(email);
+CREATE INDEX IF NOT EXISTS idx_agendamentos_nutricionista ON agendamentos(nutricionista_id);
+CREATE INDEX IF NOT EXISTS idx_agendamentos_paciente ON agendamentos(paciente_id);
+CREATE INDEX IF NOT EXISTS idx_dias_disponiveis_nutricionista ON dias_disponiveis(nutricionista_id);
