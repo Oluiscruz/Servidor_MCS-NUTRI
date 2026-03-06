@@ -2,6 +2,7 @@ const express = require('express');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { error } = require('console');
 
 module.exports = function(passport, getConnection) {
     const router = express.Router();
@@ -95,16 +96,24 @@ module.exports = function(passport, getConnection) {
     router.get('/google/callback', 
         passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/paciente/login?erro=true` }),
         (req, res) => {
+
+            if(req.user) {
+                console.error('❌ usuário não definido após autenticação.');
+                return res.redirect(`${FRONTEND_URL}/paciente/login?erro=sessao`);
+                
+            }
+
             // Redireciona para o frontend com os dados do usuário na URL
-            console.log("Redirecionando para:", `${FRONTEND_URL}/auth/callback`); //log básico para encontrar possíveis erros
-            console.log("Dados do usuário:", req.user);
-            
+            console.log("Autenticação bem-sucedida. Dados do usuário:", req.user);
             const userData = encodeURIComponent(JSON.stringify({
                 id: req.user.id,
                 nome: req.user.nome,
                 email: req.user.email,
                 tipo: 'paciente'
             }));
+            
+            console.log("Dados do usuário:", req.user);
+            
             res.redirect(`${FRONTEND_URL}/auth/callback?user=${userData}`);
         }
     );
