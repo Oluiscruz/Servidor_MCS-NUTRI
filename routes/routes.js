@@ -20,7 +20,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-const uploadsDir = path.resolve(__dirname, 'crn_documento');
+const uploadsDir = path.resolve(__dirname, '..', 'crn_documento');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }

@@ -7,17 +7,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
-crn_documento
+
+# Uploads
+crn_documento/*
+!crn_documento/.gitkeep
+
+# Database
 sistema_nutricao.sql
+
+# Build
 dist
 dist-ssr
 *.local
 
+# Environment
+.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.env
 .idea
 .DS_Store
 *.suo

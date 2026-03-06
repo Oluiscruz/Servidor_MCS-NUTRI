@@ -1,17 +1,21 @@
 {
-  "name": "clinica-api-nodejs",
+  "name": "nutrims-backend",
   "version": "1.0.0",
-  "description": "API Node.js para gestão de clínica com MySQL",
+  "description": "API Node.js para gestão de clínica nutricional com PostgreSQL",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate": "node migrate.js",
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "node",
     "express",
+    "postgresql",
     "pg",
     "cors",
-    "bcrypt"
+    "bcrypt",
+    "nutrição"
   ],
   "author": "",
   "license": "ISC",
@@ -29,6 +33,7 @@
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "nodemon": "^3.0.1",
     "supabase": "^2.76.17"
   }
 }

@@ -30,7 +30,7 @@ async function getConnection() {
         const client = await pool.connect();
         console.log('✨ Conectado ao banco de dados');
         return client;
-        
+
     } catch (error) {
         console.error('❌ Erro ao obter conexão do pool:', error);
         throw error;
@@ -38,10 +38,10 @@ async function getConnection() {
 }
 
 // Importa o arquivo auth.js com o passport e conexão do db.
-const authRoutes = require('./auth.js')(passport, getConnection);
+const authRoutes = require('./auth/auth.js')(passport, getConnection);
 app.use('/api/auth', authRoutes);
 
-const appRoutes = require('./routes.js')(getConnection);
+const appRoutes = require('./routes/routes.js')(getConnection);
 app.use('/', appRoutes);
 
 
