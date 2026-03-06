@@ -36,10 +36,10 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true,
         maxAge: 30 * 24 * 60 * 60 * 1000,
-        secure: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        sameSite: true
+        secure: true,
+        sameSite: 'none',
+        httpOnly: true
     }
 }));
 app.use(passport.initialize());

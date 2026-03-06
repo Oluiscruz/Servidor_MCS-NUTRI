@@ -2,7 +2,6 @@ const express = require('express');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { error } = require('console');
 
 module.exports = function(passport, getConnection) {
     const router = express.Router();
@@ -52,8 +51,8 @@ module.exports = function(passport, getConnection) {
             const senhaHashed = await bcrypt.hash(randomPass, saltRounds);
 
             const insertResult = await connection.query(
-                `INSERT INTO pacientes (nome, email, google_id, senha) VALUES ($1, $2, $3, $4) RETURNING id`,
-                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id, senhaHashed]
+                `INSERT INTO pacientes (nome, email, google_id, senha, telefone, sexo, data_nascimento) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id, senhaHashed, null, 'Não informado', '2000-01-01']
             );
 
             novoPaciente.id = insertResult.rows[0].id;
@@ -97,22 +96,18 @@ module.exports = function(passport, getConnection) {
         passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/paciente/login?erro=true` }),
         (req, res) => {
 
-            if(req.user) {
+            if(!req.user) {
                 console.error('❌ usuário não definido após autenticação.');
                 return res.redirect(`${FRONTEND_URL}/paciente/login?erro=sessao`);
-                
             }
 
-            // Redireciona para o frontend com os dados do usuário na URL
-            console.log("Autenticação bem-sucedida. Dados do usuário:", req.user);
+            console.log("✅ Autenticação bem-sucedida. Dados do usuário:", req.user);
             const userData = encodeURIComponent(JSON.stringify({
                 id: req.user.id,
                 nome: req.user.nome,
                 email: req.user.email,
                 tipo: 'paciente'
             }));
-            
-            console.log("Dados do usuário:", req.user);
             
             res.redirect(`${FRONTEND_URL}/auth/callback?user=${userData}`);
         }
