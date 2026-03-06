@@ -8,6 +8,8 @@ const pgSession = require('connect-pg-simple')(session);
 
 // Inicializa o Express
 const app = express();
+// Se o app estiver por trás de um proxy (ex: Render), habilita trust proxy
+app.set('trust proxy', 1);
 // Configuração CORRETA do CORS
 app.use(cors({
     origin: process.env.FRONTEND_URL, // SEM barra no final
@@ -35,7 +37,8 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000,
-        secure: process.env.NODE_ENV === 'production'
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'none'
     }
 }));
 app.use(passport.initialize());
