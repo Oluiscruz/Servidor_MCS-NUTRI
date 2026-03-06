@@ -1,6 +1,6 @@
 const express = require('express');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 module.exports = function(passport, getConnection) {
