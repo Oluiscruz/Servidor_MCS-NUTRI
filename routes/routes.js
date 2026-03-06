@@ -45,6 +45,21 @@ module.exports = function (getConnection) {
         res.send('API de NutriMS está rodando! Acesse as rotas /api/cadastro/* e /api/login/*');
     });
 
+    // Rota de Health Check que testa conexão com o banco de dados
+    routes.get('/health', async (req, res) => {
+        let connection;
+        try {
+            connection = await getConnection();
+            const result = await connection.query('SELECT NOW()');
+            res.json({ ok: true, now: result.rows[0] });
+        } catch (error) {
+            console.error('❌ Health check error:', error);
+            res.status(500).json({ ok: false, error: error.message });
+        } finally {
+            if (connection) connection.release();
+        }
+    });
+
     // ===== ROTA DE CADASTRO DE NUTRICIONISTAS ======
     routes.post('/api/nutricionista/cadastro', upload.single('crn_documento'), async (req, res) => {
         const { nome, telefone, crn_numero, crn_regiao, email, senha, tempo_atendimento } = req.body;

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const dns = require('dns');
 const { Pool } = require('pg');
 const cors = require('cors');
 const passport = require('passport');
@@ -8,11 +9,25 @@ const pgSession = require('connect-pg-simple')(session);
 
 // Inicializa o Express
 const app = express();
+
 // Se o app estiver por trás de um proxy (ex: Render), habilita trust proxy
 app.set('trust proxy', 1);
-// Configuração CORRETA do CORS
+
+// Preferir IPv4 na resolução DNS para evitar erros ENETUNREACH em ambientes sem IPv6
+try {
+    if (typeof dns.setDefaultResultOrder === 'function') {
+        dns.setDefaultResultOrder('ipv4first');
+        console.log('⚙️ DNS result order set to ipv4first (prefer IPv4)');
+    } else {
+        console.log('⚙️ dns.setDefaultResultOrder not available on this Node version');
+    }
+} catch (err) {
+    console.warn('⚠️ Could not change DNS result order:', err && err.message ? err.message : err);
+}
+
+// Configuração do CORS
 app.use(cors({
-    origin: process.env.FRONTEND_URL, // SEM barra no final
+    origin: process.env.FRONTEND_URL,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -42,6 +57,7 @@ app.use(session({
         httpOnly: true
     }
 }));
+
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -68,6 +84,15 @@ app.use('/', appRoutes);
 
 // Inicia o servidor
 const PORT = process.env.PORT;
+// Handlers para capturar erros não tratados e registrar detalhes
+process.on('unhandledRejection', (reason, p) => {
+    console.error('Unhandled Rejection at:', p, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    // Em produção talvez queira reiniciar, aqui apenas logamos
+});
+
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
 });
