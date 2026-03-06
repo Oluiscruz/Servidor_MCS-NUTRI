@@ -9,6 +9,8 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const routes = express.Router();
 
+// Mudando de Mysql para Postgresql.
+
 // Configurar transporter de email
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -43,7 +45,7 @@ module.exports = function (getConnection) {
         res.send('API de NutriMS está rodando! Acesse as rotas /api/cadastro/* e /api/login/*');
     });
 
-    // Rota de cadastro nutricionista
+    // ===== ROTA DE CADASTRO DE NUTRICIONISTAS ======
     routes.post('/api/nutricionista/cadastro', upload.single('crn_documento'), async (req, res) => {
         const { nome, telefone, crn_numero, crn_regiao, email, senha, tempo_atendimento } = req.body;
 
@@ -57,6 +59,7 @@ module.exports = function (getConnection) {
 
         const crn_documento = req.file.filename;
         const tempoAtendimento = tempo_atendimento || 30;
+        const tempoFormatado = `00:${String(tempoAtendimento).padStart(2, '0')}:00`;
 
         let connection;
         try {
@@ -67,14 +70,18 @@ module.exports = function (getConnection) {
             const senhaHashed = await bcrypt.hash(senha, saltRounds);
 
             // Inserir o nutri no banco de dados
-            const [result] = await connection.execute(
-                'INSERT INTO nutricionistas (nome, telefone, crn_numero, crn_regiao, crn_documento, email, senha, tempo_atendimento) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [nome, telefone, crn_numero, crn_regiao, crn_documento, email, senhaHashed, tempoAtendimento]
+            const result = await connection.query(
+                `INSERT INTO 
+                nutricionistas (
+                nome, telefone, crn_numero, crn_regiao, crn_documento, email, senha, tempo_atendimento
+                ) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+                [nome, telefone, crn_numero, crn_regiao, crn_documento, email, senhaHashed, tempoFormatado]
             );
 
             res.status(201).json({
                 message: '✅ Nutri cadastrado com sucesso!',
-                id: result.insertId,
+                id: result.rows[0].id,
                 nome,
                 email,
                 telefone,
@@ -83,13 +90,13 @@ module.exports = function (getConnection) {
             });
 
         } catch (error) {
-            if (error.code === 'ER_DUP_ENTRY') { return res.status(409).json({ message: '🔍 CRN ou email já cadastrado.' }); }
-            console.error('❌ Erro ao cadastrar médico:', error);
+            if (error.code === '23505') { return res.status(409).json({ message: '🔍 CRN ou email já cadastrado.' }); }
+            console.error('❌ Erro ao cadastrar nutri:', error);
             res.status(500).json({ message: 'Erro interno do servidor.' });
         } finally { if (connection) connection.release(); }
     });
 
-    // Rota de cadastro paciente
+    // ===== ROTA DE CADASTRO DE PACIENTES =====
     routes.post('/api/paciente/cadastro', async (req, res) => {
         const { nome, telefone, sexo, data_nascimento, email, senha } = req.body;
 
@@ -106,14 +113,17 @@ module.exports = function (getConnection) {
             const senhaHashed = await bcrypt.hash(senha, saltRounds);
 
             // Inserir o paciente no banco de dados
-            const [result] = await connection.execute(
-                'INSERT INTO pacientes (nome, telefone, sexo, email, senha, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)',
+            const result = await connection.query(
+                `INSERT INTO pacientes (
+                nome, telefone, sexo, email, senha, data_nascimento
+            ) 
+                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                 [nome, telefone, sexo, email, senhaHashed, data_nascimento]
             );
 
             res.status(201).json({
                 message: 'Paciente cadastrado com sucesso!',
-                id: result.insertId,
+                id: result.rows[0].id,
                 nome,
                 email,
                 data_nascimento,
@@ -122,7 +132,7 @@ module.exports = function (getConnection) {
             });
 
         } catch (error) {
-            if (error.code === 'ER_DUP_ENTRY') {
+            if (error.code === '23505') {
                 return res.status(409).json({ message: '🔍 Email já cadastrado.' });
             }
             console.error('❌ Erro ao cadastrar paciente:', error);
@@ -146,10 +156,11 @@ module.exports = function (getConnection) {
             connection = await getConnection();
 
             // Buscar o nutri pelo email
-            const [rows] = await connection.execute(
-                'SELECT id, nome, email, senha, crn_numero, crn_regiao, crn_documento, crn_validacao, telefone FROM nutricionistas WHERE email = ?',
+            const result = await connection.query(
+                `SELECT id, nome, email, senha, crn_numero, crn_regiao, crn_documento, crn_validacao, telefone FROM nutricionistas WHERE email = $1`,
                 [email]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) return res.status(401).json({ message: '❌ Email ou senha inválidos.' });
 
@@ -198,10 +209,11 @@ module.exports = function (getConnection) {
             connection = await getConnection();
 
             // Verificar se o paciente já existe
-            const [rows] = await connection.execute(
-                'SELECT id, nome, telefone, email FROM pacientes WHERE email = ?',
+            const result = await connection.query(
+                'SELECT id, nome, telefone, email FROM pacientes WHERE email = $1',
                 [email]
             );
+            const rows = result.rows;
 
             if (rows.length > 0) {
                 // Paciente já existe, retorna os dados
@@ -219,15 +231,18 @@ module.exports = function (getConnection) {
             }
 
             // Paciente não existe, criar novo
-            const [result] = await connection.execute(
-                'INSERT INTO pacientes (nome, email, telefone, senha, sexo, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)',
+            const insertResult = await connection.query(
+                `INSERT INTO pacientes (
+                nome, email, telefone, senha, sexo, data_nascimento
+                ) 
+                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                 [nome, email, telefone || null, 'google_auth', 'Não informado', '2000-01-01']
             );
 
             res.status(201).json({
                 message: '✅ Cadastro realizado com sucesso!',
                 usuario: {
-                    id: result.insertId,
+                    id: insertResult.rows[0].id,
                     nome,
                     email,
                     telefone: telefone || null,
@@ -256,10 +271,11 @@ module.exports = function (getConnection) {
         try {
             connection = await getConnection();
             // 1. Buscar o paciente pelo email 
-            const [rows] = await connection.execute(
-                'SELECT id, nome, telefone, email, senha FROM pacientes WHERE email = ?',
+            const result = await connection.query(
+                'SELECT id, nome, telefone, email, senha FROM pacientes WHERE email = $1',
                 [email]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(401).json({ message: '❌ Email ou senha inválidos.' });
@@ -301,9 +317,10 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [nutricionistas] = await connection.execute(
-                'SELECT id, nome, CONCAT(crn_regiao, "-", crn_numero) as crn, telefone FROM nutricionistas ORDER BY nome'
+            const result = await connection.query(
+                'SELECT id, nome, crn_regiao || \'-\' || crn_numero as crn, telefone FROM nutricionistas ORDER BY nome'
             );
+            const nutricionistas = result.rows;
             res.json({ nutricionistas });
         } catch (error) {
             console.error('Erro ao listar nutricionistas:', error);
@@ -327,21 +344,23 @@ module.exports = function (getConnection) {
             connection = await getConnection();
 
             // Verificar se já existe
-            const [existente] = await connection.execute(
-                'SELECT id FROM dias_disponiveis WHERE nutricionista_id = ? AND mes = ? AND dia = ? AND ano = ? AND hora_inicio = ? AND hora_fim = ?',
+            const checkResult = await connection.query(
+                'SELECT id FROM dias_disponiveis WHERE nutricionista_id = $1 AND mes = $2 AND dia = $3 AND ano = $4 AND hora_inicio = $5 AND hora_fim = $6',
                 [nutricionista_id, mes, dia, ano, hora_inicio, hora_fim]
             );
+            const existente = checkResult.rows;
 
             if (existente.length > 0) {
                 return res.status(409).json({ message: 'Data já cadastrada' });
             }
 
-            const [result] = await connection.execute(
-                'INSERT INTO dias_disponiveis (nutricionista_id, mes, dia, ano, hora_inicio, hora_fim) VALUES ( ?, ?, ?, ?, ?, ?)',
+            const insertResult = await connection.query(
+                `INSERT INTO dias_disponiveis (nutricionista_id, mes, dia, ano, hora_inicio, hora_fim) 
+                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                 [nutricionista_id, mes, dia, ano, hora_inicio, hora_fim]
             );
 
-            res.status(201).json({ message: 'Data salva com sucesso!', id: result.insertId });
+            res.status(201).json({ message: 'Data salva com sucesso!', id: insertResult.rows[0].id });
         } catch (error) {
             console.error('Erro ao salvar data:', error);
             res.status(500).json({ message: 'Erro ao salvar data.' });
@@ -369,11 +388,12 @@ module.exports = function (getConnection) {
         COALESCE(n.tempo_atendimento, '00:30:00') as tempo_atendimento
         FROM dias_disponiveis d
         JOIN nutricionistas n ON d.nutricionista_id = n.id
-        WHERE d.nutricionista_id = ?
+        WHERE d.nutricionista_id = $1
         ORDER BY d.ano, d.mes, d.dia, d.hora_inicio
         `;
 
-            const [dias] = await connection.execute(query, [nutricionista_id]);
+            const result = await connection.query(query, [nutricionista_id]);
+            const dias = result.rows;
             console.log(`✅ Encontrados ${dias.length} dias disponíveis:`, dias);
             res.json({ dias });
 
@@ -397,10 +417,11 @@ module.exports = function (getConnection) {
         try {
             connection = await getConnection();
             // Busca os agendamentos que NÃO estão cancelados para aquele nutricionista
-            const [ocupados] = await connection.execute(
-                'SELECT dia, mes_ano as mes, ano, hora_agendamento FROM agendamentos WHERE nutricionista_id = ? AND status != ?',
+            const result = await connection.query(
+                'SELECT dia, mes, ano, hora_agendamento FROM agendamentos WHERE nutricionista_id = $1 AND status != $2',
                 [nutricionista_id, 'Cancelado']
             );
+            const ocupados = result.rows;
 
             res.json({ ocupados });
         } catch (error) {
@@ -453,17 +474,20 @@ module.exports = function (getConnection) {
             connection = await getConnection();
 
             // verificar se já existe um agendamento ativo para o mesmo dia e horário (ignora cancelados)
-            const [existente] = await connection.execute(
-                'SELECT id FROM agendamentos WHERE nutricionista_id = ? AND dia = ? AND mes_ano = ? AND ano = ? AND hora_agendamento = ? AND status != ?',
+            const checkResult = await connection.query(
+                `SELECT 
+                id FROM agendamentos 
+                WHERE nutricionista_id = $1 AND dia = $2 AND mes = $3 AND ano = $4 AND hora_agendamento = $5 AND status != $6`,
                 [nutricionista_id, dia, mes, ano, horario, 'Cancelado']
             );
+            const existente = checkResult.rows;
 
             if (existente.length > 0) {
                 return res.status(409).json({ message: 'Horário indisponível!' });
             }
 
-            await connection.execute(
-                'INSERT INTO agendamentos (paciente_id, nutricionista_id, dia, mes_ano, ano, hora_agendamento, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            await connection.query(
+                `INSERT INTO agendamentos (paciente_id, nutricionista_id, dia, mes, ano, hora_agendamento, status) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [paciente_id, nutricionista_id, dia, mes, ano, horario, statusAgendamento]
             );
 
@@ -486,8 +510,8 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [result] = await connection.execute(
-                'UPDATE nutricionistas SET tempo_atendimento = ? WHERE id = ?',
+            await connection.query(
+                'UPDATE nutricionistas SET tempo_atendimento = $1 WHERE id = $2',
                 [tempo_atendimento, nutricionista_id]
             );
             res.status(200).json({ message: 'Tempo de atendimento atualizado com sucesso!' });
@@ -512,10 +536,11 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
-                'SELECT id, email, senha FROM admins WHERE email = ?',
+            const result = await connection.query(
+                'SELECT id, email, senha FROM admins WHERE email = $1',
                 [email]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(401).json({ message: '❌ Credenciais inválidas.' });
@@ -551,8 +576,8 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            await connection.execute(
-                'UPDATE nutricionistas SET crn_validacao = ? WHERE id = ?',
+            await connection.query(
+                'UPDATE nutricionistas SET crn_validacao = $1 WHERE id = $2',
                 [aprovado, nutricionista_id]
             );
             res.json({ message: aprovado ? 'CRN aprovado com sucesso!' : 'CRN rejeitado.' });
@@ -572,10 +597,11 @@ module.exports = function (getConnection) {
         try {
             connection = await getConnection();
             // Incluir o email na resposta para que o frontend possa enviar notificações
-            const [rows] = await connection.execute(
-                'SELECT crn_validacao, nome, crn_numero, crn_regiao, email FROM nutricionistas WHERE id = ?',
+            const result = await connection.query(
+                'SELECT crn_validacao, nome, crn_numero, crn_regiao, email FROM nutricionistas WHERE id = $1',
                 [id]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(404).json({ message: 'Nutricionista não encontrado' });
@@ -595,9 +621,10 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
+            const result = await connection.query(
                 'SELECT id, nome, crn_numero, crn_regiao, crn_documento, email, telefone, data_criacao FROM nutricionistas WHERE crn_validacao = FALSE ORDER BY data_criacao DESC'
             );
+            const rows = result.rows;
             res.json({ nutricionistas: rows });
         } catch (error) {
             console.error('Erro ao listar pendentes:', error);
@@ -622,10 +649,11 @@ module.exports = function (getConnection) {
             let connection;
             try {
                 connection = await getConnection();
-                const [rows] = await connection.execute(
-                    'SELECT nome, email, crn_numero, crn_regiao FROM nutricionistas WHERE id = ?',
+                const result = await connection.query(
+                    'SELECT nome, email, crn_numero, crn_regiao FROM nutricionistas WHERE id = $1',
                     [nutricionista_id]
                 );
+                const rows = result.rows;
                 if (rows.length > 0) {
                     dadosNutricionista = rows[0];
                     console.log('✅ Dados encontrados:', dadosNutricionista);
@@ -730,10 +758,11 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
+
+            const result = await connection.query(
                 `SELECT 
                     a.id AS agendamento_id,
-                    a.mes_ano,
+                    a.mes,
                     a.dia,
                     a.ano,
                     a.hora_agendamento,
@@ -744,11 +773,14 @@ module.exports = function (getConnection) {
                     p.telefone AS paciente_telefone
                 FROM agendamentos a
                 INNER JOIN pacientes p ON a.paciente_id = p.id
-                WHERE a.nutricionista_id = ? AND LOWER(a.status) != 'concluido'
+                WHERE a.nutricionista_id = $1 AND LOWER(a.status::text) != 'concluído'
                 ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
                 [nutricionista_id]
             );
+
+            const rows = result.rows;
             res.json({ agendamentos: rows });
+
         } catch (error) {
             console.error('Erro ao buscar pacientes agendados:', error);
             res.status(500).json({ message: 'Erro interno do servidor.' });
@@ -774,62 +806,65 @@ module.exports = function (getConnection) {
             connection = await getConnection();
             console.log('💾 Executando UPDATE:', { status, agendamento_id });
 
-            const [result] = await connection.execute(
-                `UPDATE agendamentos SET status = ? WHERE id = ?`,
+            const updateResult = await connection.query(
+                `UPDATE agendamentos SET status = $1 WHERE id = $2`,
                 [status, agendamento_id]
             );
 
-            console.log('✅ UPDATE executado. Linhas afetadas:', result.affectedRows);
+            console.log('✅ UPDATE executado. Linhas afetadas:', updateResult.rowCount);
             console.log('📊 Status recebido:', status);
 
             // Se o status foi alterado para 'Concluído', salvar no histórico de agendamentos
-            if (result.affectedRows > 0 && status.toLowerCase() === 'concluido') {
+            if (updateResult.rowCount > 0 && status.toLowerCase() === 'concluido') {
                 console.log('✅ ENTRANDO no bloco de histórico');
                 try {
                     // Buscar dados do agendamento atualizado
-                    const [agRows] = await connection.execute(
-                        'SELECT paciente_id, nutricionista_id FROM agendamentos WHERE id = ?',
+                    const agResult = await connection.query(
+                        'SELECT paciente_id, nutricionista_id FROM agendamentos WHERE id = $1',
                         [agendamento_id]
                     );
+                    const agRows = agResult.rows;
 
                     if (agRows.length > 0) {
                         const pacienteId = agRows[0].paciente_id;
                         const nutricionistaId = agRows[0].nutricionista_id;
 
                         // Buscar a ficha mais recente do paciente (se houver)
-                        const [fichaRows] = await connection.execute(
-                            'SELECT id FROM fichas_pacientes WHERE paciente_id = ? ORDER BY data_atualizacao DESC LIMIT 1',
+                        const fichaResult = await connection.query(
+                            'SELECT id FROM fichas_pacientes WHERE paciente_id = $1 ORDER BY data_atualizacao DESC LIMIT 1',
                             [pacienteId]
                         );
+                        const fichaRows = fichaResult.rows;
                         const fichaId = fichaRows.length > 0 ? fichaRows[0].id : null;
 
                         // Evitar inserção duplicada de histórico para o mesmo agendamento
-                        const [existing] = await connection.execute(
-                            'SELECT agendamento_id FROM historico_consultas WHERE agendamento_id = ?',
+                        const existResult = await connection.query(
+                            'SELECT agendamento_id FROM historico_consultas WHERE agendamento_id = $1',
                             [agendamento_id]
                         );
+                        const existing = existResult.rows;
 
                         console.log('🔍 Verificando duplicata. Existing length:', existing.length);
                         if (existing.length === 0) {
                             console.log('💾 Inserindo histórico com dados:', { nutricionistaId, pacienteId, agendamento_id, fichaId });
-                            await connection.execute(
+                            await connection.query(
                                 `INSERT INTO historico_consultas (
                                 nutricionista_id, paciente_id, agendamento_id, ficha_id
                                 ) 
-                                VALUES (?, ?, ?, ?)`,
-                                [nutricionistaId, pacienteId, agendamento_id, fichaId]  
+                                VALUES ($1, $2, $3, $4)`,
+                                [nutricionistaId, pacienteId, agendamento_id, fichaId]
                             );
                             console.log('✅ Histórico de agendamento inserido:', { agendamento_id, pacienteId, nutricionistaId, fichaId });
                         } else {
                             console.log('ℹ  Histórico já existente para agendamento:', agendamento_id);
                         }
-                    } 
+                    }
                 } catch (histError) {
                     console.error('❌ Erro ao inserir histórico de agendamento automaticamente:', histError);
                 }
             }
 
-            res.json({ message: 'Status do agendamento atualizado com sucesso!', affectedRows: result.affectedRows });
+            res.json({ message: 'Status do agendamento atualizado com sucesso', rowCount: updateResult.rowCount });
         } catch (error) {
             console.error('❌ Erro ao alterar status do agendamento:', error);
             res.status(500).json({ message: 'Erro interno do servidor.' });
@@ -843,13 +878,13 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [result] = await connection.execute(
-                `DELETE FROM agendamentos WHERE id = ?`,
+            const deleteResult = await connection.query(
+                `DELETE FROM agendamentos WHERE id = $1`,
                 [agendamento_id]
             );
 
-            console.log('✅ Agendamento apagado com sucesso. Linhas afetadas:', result.affectedRows);
-            res.json({ message: 'Agendamento apagado com sucesso!', affectedRows: result.affectedRows });
+            console.log('✅ Agendamento apagado com sucesso. Linhas afetadas:', deleteResult.rowCount);
+            res.json({ message: 'Agendamento apagado com sucesso!', rowCount: deleteResult.rowCount });
 
         } catch (error) {
             console.error('❌ Erro ao apagar agendamento:', error);
@@ -878,11 +913,11 @@ module.exports = function (getConnection) {
         try {
             connection = await getConnection();
 
-            const [result] = await connection.execute(
-                `INSERT INTO fichas_pacientes (paciente_id, altura, peso, imc, alergias, restricoes_alimentares, objetivo) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            const insertResult = await connection.query(
+                `INSERT INTO fichas_pacientes (paciente_id, altura, peso, imc, alergias, restricoes_alimentares, objetivo) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
                 [paciente_id, alturaNumerico, pesoNumerico, imc, alergias || null, restricoes_alimentares || null, objetivos]
             );
-            res.json({ message: 'Ficha do paciente criada com sucesso!', ficha_id: result.insertId });
+            res.json({ message: 'Ficha do paciente criada com sucesso!', ficha_id: insertResult.rows[0].id });
         } catch (error) {
             console.error('❌ Erro ao criar ficha do paciente:', error);
             console.error('Detalhes:', error.message);
@@ -899,10 +934,11 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
-                `SELECT * FROM fichas_pacientes WHERE paciente_id = ?`,
+            const result = await connection.query(
+                `SELECT * FROM fichas_pacientes WHERE paciente_id = $1`,
                 [paciente_id]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(404).json({ message: 'Ficha não encontrada' });
@@ -935,11 +971,11 @@ module.exports = function (getConnection) {
         try {
             connection = await getConnection();
 
-            const [result] = await connection.execute(
-                `UPDATE fichas_pacientes SET altura = ?, peso = ?, imc = ?, alergias = ?, restricoes_alimentares = ?, objetivo = ? WHERE paciente_id = ?`,
+            const updateResult = await connection.query(
+                `UPDATE fichas_pacientes SET altura = $1, peso = $2, imc = $3, alergias = $4, restricoes_alimentares = $5, objetivo = $6 WHERE paciente_id = $7`,
                 [alturaNumerico, pesoNumerico, imc, alergias || null, restricoes_alimentares || null, objetivos, paciente_id]
             );
-            res.json({ message: 'Ficha do paciente atualizada com sucesso!', affectedRows: result.affectedRows });
+            res.json({ message: 'Ficha do paciente atualizada com sucesso!', rowCount: updateResult.rowCount });
 
         } catch (error) {
             console.error('❌ Erro ao atualizar ficha do paciente:', error);
@@ -958,7 +994,7 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
+            const result = await connection.query(
                 `SELECT 
                     f.*,
                     p.nome AS paciente_nome,
@@ -967,9 +1003,10 @@ module.exports = function (getConnection) {
                     p.data_nascimento AS paciente_data_nascimento
                 FROM fichas_pacientes f
                 INNER JOIN pacientes p ON f.paciente_id = p.id
-                WHERE f.paciente_id = ?`,
+                WHERE f.paciente_id = $1`,
                 [paciente_id]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(404).json({ message: 'Ficha não encontrada' });
@@ -995,24 +1032,25 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
+            const result = await connection.query(
                 `SELECT 
-                    a.dia, a.mes_ano, a.ano, a.hora_agendamento,
+                    a.dia, a.mes, a.ano, a.hora_agendamento,
                     p.nome AS paciente_nome, p.email AS paciente_email,
                     n.nome AS nutricionista_nome
                 FROM agendamentos a
                 INNER JOIN pacientes p ON a.paciente_id = p.id
                 INNER JOIN nutricionistas n ON a.nutricionista_id = n.id
-                WHERE a.id = ?`,
+                WHERE a.id = $1`,
                 [agendamento_id]
             );
+            const rows = result.rows;
 
             if (rows.length === 0) {
                 return res.status(404).json({ message: 'Agendamento não encontrado' });
             }
 
-            const { paciente_nome, paciente_email, nutricionista_nome, dia, mes_ano, ano, hora_agendamento } = rows[0];
-            const dataConsulta = `${dia} de ${mes_ano} de ${ano} às ${hora_agendamento}`;
+            const { paciente_nome, paciente_email, nutricionista_nome, dia, mes, ano, hora_agendamento } = rows[0];
+            const dataConsulta = `${dia} de ${mes} de ${ano} às ${hora_agendamento}`;
 
             let mailOptions;
             if (status === 'Confirmado') {
@@ -1071,6 +1109,8 @@ module.exports = function (getConnection) {
     routes.get('/api/nutricionista/historico-consultas', async (req, res) => {
         const { nutricionista_id } = req.query;
 
+        console.log('📋 Buscando histórico para nutricionista_id:', nutricionista_id);
+
         if (!nutricionista_id) {
             return res.status(400).json(
                 { message: 'nutricionista_id é obrigatório', agendamentos: [] }
@@ -1080,10 +1120,18 @@ module.exports = function (getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute(
+            
+            // Primeiro, verificar todos os agendamentos desse nutricionista
+            const allResult = await connection.query(
+                `SELECT id, status, status::text as status_text FROM agendamentos WHERE nutricionista_id = $1`,
+                [nutricionista_id]
+            );
+            console.log('📊 Todos os agendamentos:', allResult.rows);
+            
+            const result = await connection.query(
                 `SELECT 
                     a.id AS agendamento_id,
-                    a.mes_ano,
+                    a.mes,
                     a.dia,
                     a.ano,
                     a.hora_agendamento,
@@ -1094,15 +1142,16 @@ module.exports = function (getConnection) {
                     p.telefone AS paciente_telefone
                 FROM agendamentos a
                 LEFT JOIN pacientes p ON a.paciente_id = p.id
-                WHERE a.nutricionista_id = ? AND LOWER(a.status) = 'concluido'
+                WHERE a.nutricionista_id = $1 AND a.status::text ILIKE 'conclu%'
                 ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
                 [nutricionista_id]
             );
-            console.log('Historico de consultas (concluídos):', rows);
+            const rows = result.rows;
+            console.log('✅ Histórico de consultas (concluídos):', rows);
             res.json({ agendamentos: rows });
 
         } catch (error) {
-            console.error('Erro ao buscar histórico de consultas:', error);
+            console.error('❌ Erro ao buscar histórico de consultas:', error);
             res.status(500).json({ message: 'Erro ao buscar histórico de consultas' });
         } finally {
             if (connection) connection.release();

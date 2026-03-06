@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const cors = require('cors');
 const passport = require('passport');
 const session = require('express-session');
@@ -18,24 +18,19 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// === Pool de conexões com o banco de dados ====
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DATABASE_NAME,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+// === Pool de conexões com o PostgreeSQL ====
+const pool = new Pool({
+    connectionString: process.env.DB_URL,
+    ssl: { rejectUnauthorized: false }
 });
 
 // === Função para obter conexão do pool === //
 async function getConnection() {
     try {
-        const connection = await pool.getConnection();
-        console.log('✨ Conexão obtida do pool!');
-        return connection;
+        const client = await pool.connect();
+        console.log('✨ Conectado ao banco de dados');
+        return client;
+        
     } catch (error) {
         console.error('❌ Erro ao obter conexão do pool:', error);
         throw error;

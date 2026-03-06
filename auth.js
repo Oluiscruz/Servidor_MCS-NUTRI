@@ -1,5 +1,7 @@
 const express = require('express');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
 module.exports = function(passport, getConnection) {
     const router = express.Router();
@@ -18,16 +20,17 @@ module.exports = function(passport, getConnection) {
             connection = await getConnection();
             
             // 1. Verifica se o paciente já existe pelo google_id ou email
-            const [rows] = await connection.execute(
-                'SELECT * FROM pacientes WHERE google_id = ? OR email = ?',
+            const result = await connection.query(
+                `SELECT * FROM pacientes WHERE google_id = $1 OR email = $2`,
                 [profile.id, profile.emails[0].value]
             );
+            const rows = result.rows;
 
             if (rows.length > 0) {
                 let paciente = rows[0];
                 if (!paciente.google_id) {
-                    await connection.execute(
-                        'UPDATE pacientes SET google_id = ? WHERE id = ?',
+                    await connection.query(
+                        `UPDATE pacientes SET google_id = $1 WHERE id = $2`,
                         [profile.id, paciente.id]
                     );
                     paciente.google_id = profile.id;
@@ -42,12 +45,17 @@ module.exports = function(passport, getConnection) {
                 google_id: profile.id
             };
 
-            const [result] = await connection.execute(
-                'INSERT INTO pacientes (nome, email, google_id) VALUES (?, ?, ?)',
-                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id]
+            // Gerar senha aleatória e hashear para satisfazer NOT NULL
+            const saltRounds = 10;
+            const randomPass = crypto.randomBytes(16).toString('hex');
+            const senhaHashed = await bcrypt.hash(randomPass, saltRounds);
+
+            const insertResult = await connection.query(
+                `INSERT INTO pacientes (nome, email, google_id, senha) VALUES ($1, $2, $3, $4) RETURNING id`,
+                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id, senhaHashed]
             );
 
-            novoPaciente.id = result.insertId;
+            novoPaciente.id = insertResult.rows[0].id;
             return done(null, novoPaciente);
 
         } catch (error) {
@@ -67,8 +75,10 @@ module.exports = function(passport, getConnection) {
         let connection;
         try {
             connection = await getConnection();
-            const [rows] = await connection.execute('SELECT * FROM pacientes WHERE id = ?', [id]);
-            done(null, rows[0]);
+            const result = await connection.query(
+                `SELECT * FROM pacientes WHERE id = $1`, [id]
+            );
+            done(null, result.rows[0]);
         } catch (error) {
             done(error, null);
         } finally {
@@ -76,9 +86,7 @@ module.exports = function(passport, getConnection) {
         }
     });
 
-    // ==========================================
     // ====== ROTAS DE AUTENTICAÇÃO GOOGLE ======
-    // ==========================================
 
     router.get('/google',
         passport.authenticate('google', { scope: ['profile', 'email'] })
@@ -88,6 +96,9 @@ module.exports = function(passport, getConnection) {
         passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/paciente/login?erro=true` }),
         (req, res) => {
             // Redireciona para o frontend com os dados do usuário na URL
+            console.log("Redirecionando para:", `${FRONTEND_URL}/auth/callback`); //log básico para encontrar possíveis erros
+            console.log("Dados do usuário:", req.user);
+            
             const userData = encodeURIComponent(JSON.stringify({
                 id: req.user.id,
                 nome: req.user.nome,
