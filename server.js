@@ -1,5 +1,4 @@
 require('dotenv').config();
-
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -9,7 +8,14 @@ const pgSession = require('connect-pg-simple')(session);
 
 // Inicializa o Express
 const app = express();
-app.use(cors()); // faz a comunicação entre front e back
+// Configuração CORRETA do CORS
+app.use(cors({
+    origin: process.env.FRONTEND_URL, // SEM barra no final
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 // === Pool de conexões com o PostgreeSQL ====
@@ -27,7 +33,7 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'segredo',
     resave: false,
     saveUninitialized: false,
-    cookie: { 
+    cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000,
         secure: process.env.NODE_ENV === 'production'
     }
