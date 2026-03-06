@@ -22,40 +22,54 @@ try {
         console.log('⚙️ dns.setDefaultResultOrder not available on this Node version');
     }
 } catch (err) {
-    // Variável do pool que será inicializada assincronamente
-    let pool;
+    console.warn('⚠️ Could not change DNS result order:', err && err.message ? err.message : err);
+}
 
-    // === Função para obter conexão do pool ===
-    async function getConnection() {
-        if (!pool) throw new Error('Pool de conexões ainda não inicializado');
-        try {
-            const client = await pool.connect();
-            console.log('✨ Conectado ao banco de dados');
-            return client;
-        } catch (error) {
-            console.error('❌ Erro ao obter conexão do pool:', error);
-            throw error;
-        }
+// Configuração do CORS
+app.use(cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
+
+// Variável do pool que será inicializada assincronamente
+let pool;
+
+// === Função para obter conexão do pool ===
+async function getConnection() {
+    if (!pool) throw new Error('Pool de conexões ainda não inicializado');
+    try {
+        const client = await pool.connect();
+        console.log('✨ Conectado ao banco de dados');
+        return client;
+    } catch (error) {
+        console.error('❌ Erro ao obter conexão do pool:', error);
+        throw error;
+    }
+}
+
+// Função de inicialização: resolve host do DB para IPv4 e cria o pool
+async function init() {
+    const PORT = process.env.PORT || 3000;
+
+    if (!process.env.DB_URL) {
+        console.error('❌ Variável DB_URL não configurada. Abortando.');
+        process.exit(1);
     }
 
-    // Função de inicialização: resolve host do DB para IPv4 e cria o pool
-    async function init() {
-        const PORT = process.env.PORT || 3000;
+    try {
+        const dbUrl = process.env.DB_URL;
+        let parsed;
+        try { parsed = new URL(dbUrl); } catch (err) { parsed = null; }
 
-        if (!process.env.DB_URL) {
-            console.error('❌ Variável DB_URL não configurada. Abortando.');
-            process.exit(1);
-        }
+        let host = parsed ? parsed.hostname : null;
+        let port = parsed && parsed.port ? parsed.port : '5432';
 
-        try {
-            const dbUrl = process.env.DB_URL;
-            let parsed;
-            try { parsed = new URL(dbUrl); } catch (err) { parsed = null; }
-
-            let host = parsed ? parsed.hostname : null;
-            let port = parsed && parsed.port ? parsed.port : '5432';
-
-            // Tenta resolver o host para IPv4
+        // Tenta resolver o host para IPv4
+        if (host) {
             try {
                 const lookup = await dns.promises.lookup(host, { family: 4 });
                 host = lookup.address;
@@ -63,85 +77,73 @@ try {
             } catch (err) {
                 console.warn('⚠️ Não foi possível resolver IPv4 para o host do DB, prosseguindo com o hostname original:', err && err.message ? err.message : err);
             }
-
-            // Construir configuração do pool a partir da URL, usando host possivelmente convertido
-            if (parsed) {
-                const user = parsed.username || undefined;
-                const password = parsed.password || undefined;
-                const database = (parsed.pathname || '').replace(/^\//, '') || undefined;
-
-                pool = new Pool({
-                    user,
-                    password,
-                    host,
-                    port: Number(port),
-                    database,
-                    ssl: { rejectUnauthorized: false }
-                });
-            } else {
-                // fallback: usar connectionString inteira
-                pool = new Pool({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false } });
-            }
-
-            // Testa conexão
-            const client = await pool.connect();
-            client.release();
-            console.log('✅ Pool de conexões inicializado com sucesso');
-
-            // Configurar sessão com PostgreSQL (agora que pool existe)
-            app.use(session({
-                store: new pgSession({ pool: pool, tableName: 'session' }),
-                secret: process.env.SESSION_SECRET || 'segredo',
-                resave: false,
-                saveUninitialized: false,
-                cookie: {
-                    maxAge: 30 * 24 * 60 * 60 * 1000,
-                    secure: true,
-                    sameSite: 'none',
-                    httpOnly: true
-                }
-            }));
-
-            app.use(passport.initialize());
-            app.use(passport.session());
-
-            // Importa o arquivo auth.js com o passport e conexão do db.
-            const authRoutes = require('./auth/auth.js')(passport, getConnection);
-            app.use('/api/auth', authRoutes);
-
-            const appRoutes = require('./routes/routes.js')(getConnection);
-            app.use('/', appRoutes);
-
-            // Handlers para capturar erros não tratados e registrar detalhes
-            process.on('unhandledRejection', (reason, p) => {
-                console.error('Unhandled Rejection at:', p, 'reason:', reason);
-            });
-            process.on('uncaughtException', (err) => {
-                console.error('Uncaught Exception:', err);
-            });
-
-            app.listen(PORT, () => {
-                console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-            });
-
-        } catch (err) {
-            console.error('❌ Falha na inicialização do servidor:', err);
-            process.exit(1);
         }
+
+        // Construir configuração do pool a partir da URL, usando host possivelmente convertido
+        if (parsed && host) {
+            const user = parsed.username || undefined;
+            const password = parsed.password || undefined;
+            const database = (parsed.pathname || '').replace(/^\//, '') || undefined;
+
+            pool = new Pool({
+                user,
+                password,
+                host,
+                port: Number(port),
+                database,
+                ssl: { rejectUnauthorized: false }
+            });
+        } else {
+            // fallback: usar connectionString inteira
+            pool = new Pool({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false } });
+        }
+
+        // Testa conexão
+        const client = await pool.connect();
+        client.release();
+        console.log('✅ Pool de conexões inicializado com sucesso');
+
+        // Configurar sessão com PostgreSQL (agora que pool existe)
+        app.use(session({
+            store: new pgSession({ pool: pool, tableName: 'session' }),
+            secret: process.env.SESSION_SECRET || 'segredo',
+            resave: false,
+            saveUninitialized: false,
+            cookie: {
+                maxAge: 30 * 24 * 60 * 60 * 1000,
+                secure: true,
+                sameSite: 'none',
+                httpOnly: true
+            }
+        }));
+
+        app.use(passport.initialize());
+        app.use(passport.session());
+
+        // Importa o arquivo auth.js com o passport e conexão do db.
+        const authRoutes = require('./auth/auth.js')(passport, getConnection);
+        app.use('/api/auth', authRoutes);
+
+        const appRoutes = require('./routes/routes.js')(getConnection);
+        app.use('/', appRoutes);
+
+        // Handlers para capturar erros não tratados e registrar detalhes
+        process.on('unhandledRejection', (reason, p) => {
+            console.error('Unhandled Rejection at:', p, 'reason:', reason);
+        });
+        process.on('uncaughtException', (err) => {
+            console.error('Uncaught Exception:', err);
+        });
+
+        app.listen(PORT, () => {
+            console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+        });
+
+    } catch (err) {
+        console.error('❌ Falha na inicialização do servidor:', err);
+        process.exit(1);
     }
-
-    // Inicia a aplicação
-    init();
-    // Handlers para capturar erros não tratados e registrar detalhes
-    process.on('unhandledRejection', (reason, p) => {
-        console.error('Unhandled Rejection at:', p, 'reason:', reason);
-    });
-    process.on('uncaughtException', (err) => {
-        console.error('Uncaught Exception:', err);
-        // Em produção talvez queira reiniciar, aqui apenas logamos
-    });
-
-    app.listen(PORT, () => {
-        console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-    });
 }
+
+// Inicia a aplicação
+init();
