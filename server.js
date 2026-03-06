@@ -5,24 +5,35 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const passport = require('passport');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 
 // Inicializa o Express
 const app = express();
 app.use(cors()); // faz a comunicação entre front e back
 app.use(express.json());
-app.use(session({
-    secret: 'segredo',
-    resave: false,
-    saveUninitialized: false
-}))
-app.use(passport.initialize());
-app.use(passport.session());
 
 // === Pool de conexões com o PostgreeSQL ====
 const pool = new Pool({
     connectionString: process.env.DB_URL,
     ssl: { rejectUnauthorized: false }
 });
+
+// Configurar sessão com PostgreSQL
+app.use(session({
+    store: new pgSession({
+        pool: pool,
+        tableName: 'session'
+    }),
+    secret: process.env.SESSION_SECRET || 'segredo',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { 
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        secure: process.env.NODE_ENV === 'production'
+    }
+}));
+app.use(passport.initialize());
+app.use(passport.session());
 
 // === Função para obter conexão do pool === //
 async function getConnection() {
