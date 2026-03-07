@@ -98,9 +98,22 @@ async function init() {
             pool = new Pool({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false } });
         }
 
-        // Testa conexão
+        // Testa conexão e cria tabela de sessões
         const client = await pool.connect();
-        client.release();
+        try {
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS "session" (
+                    "sid" varchar NOT NULL COLLATE "default",
+                    "sess" json NOT NULL,
+                    "expire" timestamp(6) NOT NULL,
+                    CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+                );
+            `);
+            await client.query(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`);
+            console.log('✅ Tabela de sessões verificada/criada');
+        } finally {
+            client.release();
+        }
         console.log('✅ Pool de conexões inicializado com sucesso');
 
         // Configurar sessão com PostgreSQL (agora que pool existe)
