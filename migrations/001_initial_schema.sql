@@ -123,3 +123,11 @@ CREATE INDEX IF NOT EXISTS idx_pacientes_email ON pacientes(email);
 CREATE INDEX IF NOT EXISTS idx_agendamentos_nutricionista ON agendamentos(nutricionista_id);
 CREATE INDEX IF NOT EXISTS idx_agendamentos_paciente ON agendamentos(paciente_id);
 CREATE INDEX IF NOT EXISTS idx_dias_disponiveis_nutricionista ON dias_disponiveis(nutricionista_id);
+
+-- Dados Iniciais
+-- Admin padrão
+INSERT INTO admins (email, senha) 
+VALUES ('admin@nutrims.com', '$2b$10$rX1PLdP5YaSZZvgyvBARN.UPW4t.ZbAAHRXqm919ffbTmB7W0TymC');
+
+ALTER TABLE IF EXISTS fichas_pacientes
+ADD COLUMN alergias TEXT;
