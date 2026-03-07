@@ -404,7 +404,7 @@ module.exports = function (getConnection) {
         FROM dias_disponiveis d
         JOIN nutricionistas n ON d.nutricionista_id = n.id
         WHERE d.nutricionista_id = $1
-        ORDER BY d.ano, d.mes_ano, d.dia, d.hora_inicio
+        ORDER BY d.ano, d.mes, d.dia, d.hora_inicio
         `;
 
             const result = await connection.query(query, [nutricionista_id]);
