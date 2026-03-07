@@ -474,7 +474,7 @@ module.exports = function (getConnection) {
 
         // Array para converter o date para o formato do banco
         const meses = [
-            'Janeiro', 'Fevereiro', 'Marco',
+            'Janeiro', 'Fevereiro', 'Março',
             'Abril', 'Maio', 'Junho',
             'Julho', 'Agosto', 'Setembro',
             'Outubro', 'Novembro', 'Dezembro'

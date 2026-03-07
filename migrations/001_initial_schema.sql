@@ -11,7 +11,7 @@ END $$;
 
 DO $$ BEGIN
     CREATE TYPE meses_ano AS ENUM (
-        'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
     );
 EXCEPTION
