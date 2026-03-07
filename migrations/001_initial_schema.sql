@@ -127,7 +127,5 @@ CREATE INDEX IF NOT EXISTS idx_dias_disponiveis_nutricionista ON dias_disponivei
 -- Dados Iniciais
 -- Admin padrão
 INSERT INTO admins (email, senha) 
-VALUES ('admin@nutrims.com', '$2b$10$rX1PLdP5YaSZZvgyvBARN.UPW4t.ZbAAHRXqm919ffbTmB7W0TymC');
-
-ALTER TABLE IF EXISTS fichas_pacientes
-ADD COLUMN alergias TEXT;
+VALUES ('admin@nutrims.com', '$2b$10$rX1PLdP5YaSZZvgyvBARN.UPW4t.ZbAAHRXqm919ffbTmB7W0TymC')
+ON CONFLICT (email) DO NOTHING;
