@@ -52,7 +52,7 @@ module.exports = function(passport, getConnection) {
 
             const insertResult = await connection.query(
                 `INSERT INTO pacientes (nome, email, google_id, senha, telefone, sexo, data_nascimento) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id, senhaHashed, null, 'Não informado', '2000-01-01']
+                [novoPaciente.nome, novoPaciente.email, novoPaciente.google_id, senhaHashed, null, null, null]
             );
 
             novoPaciente.id = insertResult.rows[0].id;
