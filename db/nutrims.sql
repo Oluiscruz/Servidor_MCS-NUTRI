@@ -2,7 +2,7 @@
 CREATE TYPE genero_paciente AS ENUM ('M', 'F', 'Outro');
 
 CREATE TYPE meses_ano AS ENUM (
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+    'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 );
 

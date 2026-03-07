@@ -474,7 +474,7 @@ module.exports = function (getConnection) {
 
         // Array para converter o date para o formato do banco
         const meses = [
-            'Janeiro', 'Fevereiro', 'Março',
+            'Janeiro', 'Fevereiro', 'Marco',
             'Abril', 'Maio', 'Junho',
             'Julho', 'Agosto', 'Setembro',
             'Outubro', 'Novembro', 'Dezembro'
@@ -788,7 +788,7 @@ module.exports = function (getConnection) {
                     p.telefone AS paciente_telefone
                 FROM agendamentos a
                 INNER JOIN pacientes p ON a.paciente_id = p.id
-                WHERE a.nutricionista_id = $1 AND LOWER(a.status::text) != 'concluído'
+                WHERE a.nutricionista_id = $1 AND LOWER(a.status::text) != 'concluido'
                 ORDER BY a.ano DESC, a.dia DESC, a.hora_agendamento DESC`,
                 [nutricionista_id]
             );
