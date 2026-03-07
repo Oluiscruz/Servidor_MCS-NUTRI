@@ -4,8 +4,8 @@
   "description": "API Node.js para gestão de clínica nutricional com PostgreSQL",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "build": "rm -rf node_modules/bcrypt && npm install bcrypt --build-from-source && node migrate.js && node create-session-table.js",
+    "start": "node migrate.js && node server.js",
+    "build": "rm -rf node_modules/bcrypt && npm install bcrypt --build-from-source",
     "migrate": "node migrate.js",
     "dev": "nodemon server.js"
   },

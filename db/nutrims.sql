@@ -76,6 +76,7 @@ CREATE TABLE fichas_pacientes (
     peso DECIMAL(5, 2) NOT NULL,
     imc DECIMAL(4, 2) NOT NULL,
     objetivo TEXT,
+    alergias TEXT,
     restricoes_alimentares TEXT,
     observacoes_adicionais TEXT,
     data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
