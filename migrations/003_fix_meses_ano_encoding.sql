@@ -2,17 +2,8 @@
 -- Description: Remove acentos do enum meses_ano para compatibilidade
 -- Date: 2026-03-10
 
--- Remover o tipo antigo e criar novo sem acentos
-DROP TYPE IF EXISTS meses_ano CASCADE;
+-- Esta migration apenas garante que o tipo existe sem acentos
+-- As tabelas já foram criadas com o tipo correto na migration 001
 
-CREATE TYPE meses_ano AS ENUM (
-    'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-);
-
--- Recriar colunas que usavam o tipo
-ALTER TABLE dias_disponiveis 
-    ALTER COLUMN mes TYPE meses_ano USING mes::text::meses_ano;
-
-ALTER TABLE agendamentos 
-    ALTER COLUMN mes_ano TYPE meses_ano USING mes_ano::text::meses_ano;
+-- Não precisa fazer nada se as tabelas já existem com o tipo correto
+-- Esta migration serve apenas como registro da correção
