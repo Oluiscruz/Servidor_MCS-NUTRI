@@ -13,8 +13,19 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Configuração do CORS
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:8080'
+];
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL, // SEM barra no final
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
