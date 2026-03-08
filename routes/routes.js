@@ -13,19 +13,23 @@ const routes = express.Router();
 
 // Configurar transporter de email
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+    service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
     },
     tls: {
         rejectUnauthorized: false
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000
+    }
+});
+
+// Verificar conexão SMTP ao iniciar
+transporter.verify(function(error, success) {
+    if (error) {
+        console.error('❌ Erro na configuração do email:', error.message);
+    } else {
+        console.log('✅ Servidor de email pronto para enviar mensagens');
+    }
 });
 
 const uploadsDir = path.resolve(__dirname, '..', 'crn_documento');
