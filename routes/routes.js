@@ -11,25 +11,19 @@ const routes = express.Router();
 
 // Mudando de Mysql para Postgresql.
 
-// Configurar transporter de email
+// Configurar transporter de email com múltiplas tentativas
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
     },
-    tls: {
-        rejectUnauthorized: false
-    }
-});
-
-// Verificar conexão SMTP ao iniciar
-transporter.verify(function(error, success) {
-    if (error) {
-        console.error('❌ Erro na configuração do email:', error.message);
-    } else {
-        console.log('✅ Servidor de email pronto para enviar mensagens');
-    }
+    pool: true,
+    maxConnections: 1,
+    rateDelta: 20000,
+    rateLimit: 5
 });
 
 const uploadsDir = path.resolve(__dirname, '..', 'crn_documento');
