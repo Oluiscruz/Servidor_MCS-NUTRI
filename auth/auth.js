@@ -96,7 +96,7 @@ module.exports = function(passport, getConnection) {
         passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/paciente/login?erro=true` }),
         (req, res) => {
 
-            if(!req.user) {
+            if(!req.user || !req.user.id) {
                 console.error('❌ usuário não definido após autenticação.');
                 return res.redirect(`${FRONTEND_URL}/paciente/login?erro=sessao`);
             }
@@ -104,8 +104,9 @@ module.exports = function(passport, getConnection) {
             console.log("✅ Autenticação bem-sucedida. Dados do usuário:", req.user);
             const userData = encodeURIComponent(JSON.stringify({
                 id: req.user.id,
-                nome: req.user.nome,
-                email: req.user.email,
+                nome: req.user.nome || 'Usuário',
+                email: req.user.email || '',
+                telefone: req.user.telefone || null,
                 tipo: 'paciente'
             }));
             
