@@ -1181,5 +1181,9 @@ module.exports = function (getConnection) {
     });
 
 
+    // Importar rotas de horários fixos
+    const horarioFixoRoutes = require('./horarioFixo')(getConnection);
+    routes.use('/api/nutricionista/horario-fixo', horarioFixoRoutes);
+
     return routes;
 }
