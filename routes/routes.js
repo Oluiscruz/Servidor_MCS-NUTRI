@@ -144,12 +144,13 @@ module.exports = function (getConnection) {
 
             res.status(201).json({
                 message: 'Paciente cadastrado com sucesso!',
-                id: result.rows[0].id,
-                nome,
-                email,
-                data_nascimento,
-                telefone,
-                sexo
+                usuario: {
+                    id: result.rows[0].id,
+                    nome,
+                    email,
+                    telefone,
+                    tipo: 'paciente'
+                }
             });
 
         } catch (error) {
