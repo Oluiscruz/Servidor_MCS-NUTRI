@@ -71,13 +71,28 @@ async function getConnection() {
     }
 }
 
-// Importa o arquivo auth.js com o passport e conexão do db.
+// Importa as rotas modularizadas 
+
 const authRoutes = require('./auth/auth.js')(passport, getConnection);
 app.use('/api/auth', authRoutes);
 
 const appRoutes = require('./routes/routes.js')(getConnection);
 app.use('/', appRoutes);
 
+const telefoneRoutes = require('./routes/telefone.js')(getConnection);
+app.use('/', telefoneRoutes);
+
+const sexoRoutes = require('./routes/sexo.js')(getConnection);
+app.use('/', sexoRoutes);
+
+// 404 (ajuda no debug quando uma rota não está registrada)
+app.use((req, res) => {
+    res.status(404).json({
+        message: 'Rota não encontrada',
+        path: req.originalUrl,
+        method: req.method
+    });
+});
 
 // Inicia o servidor
 const PORT = process.env.PORT;
